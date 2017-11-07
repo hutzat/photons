@@ -5,7 +5,7 @@ for facile analysis of the photon-stream recorded with PicoQuant TCSPC hardware 
 as the HydraHarp, Picoharp.)
 
 
-## Hardware and measurement modes supported##
+## Hardware and measurement modes supported
 HydraHarp
 * v2: ht2, ht3
 
@@ -43,7 +43,7 @@ to fit FCS decay of emitters diffusing in solution exists as well.
 Object oriented analysis library for analysis of photon-resolved photon-correlation Fourier spectroscopy as 
 introduced here: https://arxiv.org/abs/physics/0604180. 
 
-##Overview
+## Overview
 PCFS.m reads in the interfeometer stage positions from a .pos file and the  meta-data from a .pcfslog file created with
 custom labview software. The photon-stream at each stage position is parsed as a photons.m child with all the properties and
 methods of the photons class. The methods of the PCFS class are then just batch-processing of photon-objects and handling of the
