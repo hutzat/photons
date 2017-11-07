@@ -9,7 +9,7 @@ as the HydraHarp, Picoharp.)
 HydraHarp
 * v2: ht2, ht3
 
-#Overview over photons.m
+# Overview over photons.m
 Every photon-stream (.ht2, or .ht3 file) can be used to create an instance of photons.
 After reading the metadata with the constructor methods (.photons), the function
 .get_photon_records() parses the raw photon-arrival time data recorded with an 
