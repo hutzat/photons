@@ -1,7 +1,7 @@
 # photons
-'photons.m' is an object-oritented implementation of a comprehensive
+'photons.m' is an object-oritented
 analysis library for time-tagged single photon arrival time data. It is intended 
-for facile analysis of the photon-stream recorded with PicoQuant TCSPC hardware (such
+for facile parsing and statistical analysis of the photon-stream recorded with PicoQuant TCSPC hardware (such
 as the HydraHarp, Picoharp.)
 
 
