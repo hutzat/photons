@@ -1,4 +1,4 @@
-# photons
+# photons.m
 'photons.m' is an object-oritented
 analysis library for time-tagged single photon arrival time data. It is intended 
 for facile parsing and statistical analysis of the photon-stream recorded with PicoQuant TCSPC hardware (such
@@ -9,7 +9,7 @@ as the HydraHarp, Picoharp.)
 HydraHarp
 * v2: ht2, ht3
 
-# Overview over photons.m
+## Overview over photons.m
 .ht2 and .ht3 files can be used to create an instance of photons.m.
 After reading the metadata with the constructor method (.photons), the function
 .get_photon_records() parses the raw photon-arrival time data recorded with an 
