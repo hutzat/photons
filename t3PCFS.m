@@ -212,7 +212,80 @@ classdef t3PCFS<dynamicprops
             end
         
         end
+        function obj=get_all_intensity_traces_for_Fourier(obj,fid,bin_width)
+            files=dir;
+            obj.files=files;
+            lstr=length(fid);
+            for i=3:numel(obj.files)
+                [path,f_name,ext]=fileparts(obj.files(i).name);
+                if strcmp(ext,'.photons')== true
+                    if strcmp(f_name(1:3),'sum')==false
+                          if strcmp(f_name(1:lstr),fid)==true%looking to lifetimes of the sum signals.
+                        obj.(f_name((lstr+1):end)).get_intensity(f_name,strcat(fid,'_intensity'),bin_width)
+                    end
+                    end
+                end
+            end
         
+        end
+        function obj=sort_intensity_traces(obj,fid,bin_width,bounds)
+            % bounds is [lower,upper;lower,upper;.....] for the different
+            % stage positions.
+            
+            files=dir;
+            obj.files=files;
+            for i=3:numel(obj.files)
+               
+                [path,f_name,ext]=fileparts(obj.files(i).name);
+                if strcmp(ext,'.photons')== true
+                    if strcmp(f_name(1:3),'sum')==false
+                      if  isprop(obj,f_name)==true
+                        
+                        % extract correlation number. 
+                        k=-1;
+                        r=[];
+                        while true
+                            k=k+1;
+                            if isstrprop(f_name(end-k),'digit')==true;
+                                r=[f_name(end-k),r];
+                            else
+                                correlation_number=str2num(r);
+                                r=[];
+                                break
+                            end
+                        end
+                        
+                         lower_limit=bounds(correlation_number+1,1);
+                         upper_limit=bounds(correlation_number+1,2);
+                      obj.(f_name).get_intensity(f_name,strcat(fid,f_name),bin_width,lower_limit, upper_limit)
+                      
+                      end
+                    else % looking at sum signal also to be intensity sorted.
+                          if  isprop(obj,f_name(12:end))==true
+                        
+                        % extract correlation number. 
+                        k=-1;
+                        r=[];
+                        while true
+                            k=k+1;
+                            if isstrprop(f_name(end-k),'digit')==true;
+                                r=[f_name(end-k),r];
+                            else
+                                correlation_number=str2num(r);
+                                r=[];
+                                break
+                            end
+                        end
+                        
+                         lower_limit=bounds(correlation_number+1,1);
+                         upper_limit=bounds(correlation_number+1,2);
+                      obj.(f_name(12:end)).get_intensity(f_name(12:end),strcat('sum_signal',fid,f_name(12:end)),bin_width,lower_limit, upper_limit)     
+                      end
+                      end
+                end
+            end      
+            
+        end
         function obj=divide_photons(obj,tau)
             %tau is a vector that contains the boundaries for the
             %photon-compartments for photon-sorting such that for tau=[x,y,z,...]
@@ -233,7 +306,7 @@ classdef t3PCFS<dynamicprops
             obj.tau_bounds=tau;
             
         end
-        
+       
         function obj=create_PCFS_children(obj,time_bounds,lag_precision)
             
             n_children=obj.n_children; %number of iterations for photon-parsing.
@@ -283,6 +356,33 @@ classdef t3PCFS<dynamicprops
                 obj.multi_dim_cross=multi_dim_cross;
                 obj.multi_dim_auto=multi_dim_auto; 
                 
+        end
+        
+        function obj=create_single_PCFS_child(obj,fid,time_bounds,lag_precision,mode)
+               
+                
+                if ~isprop(obj,fid)
+                    dummy=addprop(obj,fid);
+                end
+                switch mode
+                    case 2
+                command=strcat('obj.',fid,'=PCFS(','''',obj.folder,'''',',','2E6,','''','t2','''',')');
+                eval(command);
+                
+                % now call the PCFS function that calculates the auto-corr
+                % and cross-corr and populates the respective matrices.
+                obj.(fid).get_intensity_corrs_fid('t2',time_bounds,lag_precision,fid);
+                
+                    case 3
+                         command=strcat('obj.',fid,'=PCFS(','''',obj.folder,'''',',','2E6,','''','t3','''',')');
+                eval(command);
+                
+                % now call the PCFS function that calculates the auto-corr
+                % and cross-corr and populates the respective matrices.
+                obj.(fid).get_intensity_corrs_fid('t3',time_bounds,lag_precision,fid);
+                
+                end
+        
         end
         function obj=get_intensity_correlations(obj,mode,time_bounds,lag_precision)
             % obtains the cross-correlations and the auto-correlation 
@@ -1064,7 +1164,65 @@ classdef t3PCFS<dynamicprops
                 title('g^{(2)}_{(\tau= long)}')
                 
                 
-            end
+        end
+        function obj=get_Fourier_spectrum_from_stream(obj,fid)
+             
+                Fourier=[];
+                int=zeros(numel(obj.stage_positions),1);
+                pos=obj.stage_positions;
+                 
+                files=dir;
+                obj.files=files;
+                
+                lstr=length(fid);
+                
+                for i=3:numel(obj.files) %exclusing . and ..
+                    [path,f_name,ext]=fileparts(obj.files(i).name);
+                    if strcmp(ext,'.photons')== true
+                        if strcmp(f_name(1:3),'sum')==false %looking to get cross-corrs
+                             if strcmp(f_name(1:lstr),fid)==true
+                            %if isprop(obj,f_name)==true
+                                k=-1;
+                                r=[];
+                                while true
+                                    k=k+1;
+                                    if isstrprop(f_name(end-k),'digit')==true;
+                                        r=[f_name(end-k),r];
+                                    else
+                                        correlation_number=str2num(r);
+                                        r=[];
+                                        break
+                                    end
+                                end
+                                
+                                int_id=strcat(fid,'_intensity');
+                                intensity=obj.(f_name((lstr+1):end)).(int_id).trace;
+                                
+                                NA_elements=[];
+                                
+                                if isempty(intensity)==true
+                                    NA_elements=[NA_elements,(correlation_number+1)]
+                                else
+                                    Fourier(correlation_number+1)=(sum(intensity(:,1))-sum(intensity(:,2)))./(sum(intensity(:,1))+sum(intensity(:,2)));
+                                    int(correlation_number+1)=(sum(intensity(:,1))+sum(intensity(:,2)));
+                                end
+                             end
+                        end
+                    end
+                end
+            
+             % deleting empty elements. 
+             stage_pos=obj.stage_positions;
+             stage_pos(NA_elements)=[];
+             Fourier(NA_elements)=[];
+             int(NA_elements)=[];
+                
+             Fourier_ID=strcat(fid,'_Fourier');
+             if ~isprop(obj,Fourier_ID)
+                    dummy=addprop(obj,Fourier_ID)
+             end
+             obj.(Fourier_ID)=struct('Fourier',Fourier,'stage_pos',stage_pos,'intensity',int);
+        end
             
         %% depreciated functions
         function obj=bin_2_int_all(obj)
@@ -1119,5 +1277,5 @@ classdef t3PCFS<dynamicprops
             end
             
     end
-    end
+end
     
