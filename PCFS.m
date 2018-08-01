@@ -1,5 +1,5 @@
-%% PCFS.m V4.0 @ HENDRIK UTZAT 2017
-%  29/10/2017
+%% PCFS.m V5.0 @ HENDRIK UTZAT 2017
+%  18/5/2018
 %%Class definition for analysis of photon resolved PCFS files as generates
 %from the Labview instrument control software by HENDRIK UTZAT --V3.0
 
@@ -358,7 +358,7 @@ classdef PCFS<dynamicprops
         
             end
         
-        %% wrangle and plot PCFS-type data
+        %% wrangle and plot S-PCFS-type data.
         function obj=plot_interferogram(obj,tau_select)
           
             tau=obj.tau;
@@ -395,7 +395,7 @@ classdef PCFS<dynamicprops
             %columnlegend(3,legend_str, 'Location', 'NorthWest', 'boxoff')
             title({char(obj.PCFS_FID),' Uncorrected Cross-Correlations at Different Stage Positions'})
             xlim([1E7,1E13])
-            ylim([0.5,2.5])
+            ylim([0.5,2])
             set(gca,'FontSize',12)
             set(gca,'XTick',[]);
             
@@ -415,7 +415,7 @@ classdef PCFS<dynamicprops
             %columnlegend(3,legend_str, 'Location', 'NorthWest', 'boxoff')
             title({char(obj.PCFS_FID),' Auto-Correlations at Different Stage Positions'})
             xlim([1E7,1E13])
-            ylim([0.8,2.5])
+            ylim([0.9,2])
             set(gca,'FontSize',12)
             
             
@@ -783,7 +783,172 @@ classdef PCFS<dynamicprops
                 
                 
         end
+        
+        % analyze low temperature PCFS data.
+        function obj=get_blinking_corrected_PCFS_interferogram(obj)
             
+            if ~isprop(obj,'blinking_corrected_PCFS_interferogram')
+                dummy=addprop(obj,'blinking_corrected_PCFS_interferogram')
+            end
+            auto_corr=obj.auto_corr_sum_interferogram;
+            cross_corr=obj.cross_corr_interferogram;
+            obj.blinking_corrected_PCFS_interferogram=1-cross_corr./auto_corr;
+            obj.blinking_corrected_PCFS_interferogram(1,:)=obj.stage_positions;
+        
+        end
+        function obj=plot_spectral_diffusion(obj,tau_select,white_fringe)
+            tau=obj.tau;
+            
+            %Plot PCFS interferogram at different tau.
+            figure();
+            subplot(3,1,1)
+            legend_str=[];
+            
+            for i=1:length(tau_select);
+                [dummy,index]=min((tau- tau_select(i)).^2);
+                plot(2*(obj.stage_positions-white_fringe),obj.blinking_corrected_PCFS_interferogram(index+1,:));
+                legend_str=[legend_str; {num2str(tau_select(i)/1E9)}];
+                hold on
+            end
+            xlabel('Optical Path Length Difference [mm]')
+            ylabel('g^{(2)}_{cross}-g^{(2)}_{auto}')
+            columnlegend(2,legend_str, 'Location', 'NorthEast', 'boxoff')
+            title({char(obj.PCFS_FID),' PCFS Interferogram time [ms]'})
+            cm=colormap(jet(length(obj.stage_positions)));
+                        ylim([0,0.4])
+
+            subplot(3,1,2)
+            legend_str=[];
+            
+            for i=1:length(tau_select);
+                [dummy,index]=min((tau- tau_select(i)).^2);
+                plot(2*(obj.stage_positions-white_fringe),obj.blinking_corrected_PCFS_interferogram(index+1,:)/max(obj.blinking_corrected_PCFS_interferogram(index+1,:)));
+                legend_str=[legend_str; {num2str(tau_select(i)/1E9)}];
+                hold on
+            end
+            xlabel('Optical Path Length Difference [mm]')
+            ylabel('Norm [g^{(2)}_{cross}-g^{(2)}_{cross}]')
+            columnlegend(2,legend_str, 'Location', 'NorthEast', 'boxoff')
+            title({char(obj.PCFS_FID),' PCFS Interferogram time [ms]'})
+            cm=colormap(jet(length(obj.stage_positions)));
+            ylim([0,1])
+            subplot(3,1,3)
+            legend_str=[];
+            
+            for i=1:length(tau_select);
+                [dummy,index]=min((tau- tau_select(i)).^2);
+                plot(2*(obj.stage_positions-white_fringe),sqrt(obj.blinking_corrected_PCFS_interferogram(index+1,:)/max(obj.blinking_corrected_PCFS_interferogram(index+1,:))));
+                legend_str=[legend_str; {num2str(tau_select(i)/1E9)}];
+                hold on
+            end
+            xlabel('Optical Path Length Difference [mm]')
+            ylabel('SQRT(Norm[g^{(2)}_{cross}-g^{(2)}_{cross}])')
+            columnlegend(2,legend_str, 'Location', 'NorthEast', 'boxoff')
+            title({char(obj.PCFS_FID),' PCFS Interferogram time [ms]'})
+            cm=colormap(jet(length(obj.stage_positions)));
+        end
+        function obj=get_low_T_spectral_correlation(obj,white_fringe,index_white_fringe)
+            
+            %% mirroring the PCFS interferogram and saving it. 
+            interferogram=obj.blinking_corrected_PCFS_interferogram(2:end,:);
+           
+            
+            mirror_intf=[fliplr(interferogram(:,index_white_fringe:end)),interferogram(:,(index_white_fringe+1):end)];
+            mirror_stage=[-fliplr(obj.stage_positions(index_white_fringe:end)-white_fringe),obj.stage_positions((index_white_fringe+1):end)-white_fringe];
+            
+            interp_stage_pos=[min(mirror_stage):0.01:max(mirror_stage)];
+            
+            %% row-wise interpolation.
+            [a,b]=size(mirror_intf);
+            
+            interp_mirror=[];
+            for i=1:a
+            interp_mirror(i,:)=interp1(mirror_stage,mirror_intf(i,:),interp_stage_pos);
+            
+            end
+            
+            if ~isprop(obj,'mirror_PCFS_interferogram')
+                dummy=addprop(obj,'mirror_PCFS_interferogram');
+            end
+            
+            
+            if ~isprop(obj,'mirror_stage_pos')
+                dummy=addprop(obj,'mirror_stage_pos');
+            end
+            
+            obj.mirror_stage_pos=mirror_stage;
+            obj.mirror_PCFS_interferogram=interp_mirror;
+        
+            %% creating the spectral correlation and saving it.  
+              
+                interferogram=interp_mirror;
+            
+                eV2cm=8065.54429;
+                cm2eV=1/eV2cm;
+                
+                N=length(interp_stage_pos);
+                path_length_difference=2*(interp_stage_pos)*0.1;%% NOTE: This is where we convert to path length difference space in cm.
+                delta=(max(path_length_difference)-min(path_length_difference))/N;
+                
+                %get reciprocal space (wavenumbers).
+                increment=1/delta;
+                zeta_eV=linspace(-0.5*increment,0.5*increment,N)*cm2eV*1000; %converted to meV
+                
+                %%take the FFT of the interferogram to get the spectral correlation.All
+                %%that shifting is to shift the zero frequency component to the middle
+                %%of the FFT vector. We take the real part of the FFT because the
+                %%interferogram is by definition entirely symmetric.
+                spectral_corr=[];
+                for i=1:a
+                spectral_corr(i,:) = real(fftshift(fft(ifftshift(interferogram(i,:)),N)));
+                end                
+                
+                if ~isprop(obj,'mirrored_intf_spectral_corr')
+                    dummy=addprop(obj,'mirrored_intf_spectral_corr');
+                end
+                
+                
+                obj.mirrored_intf_spectral_corr=struct('spectral_corr',spectral_corr,'zeta',zeta_eV);
+                
+                
+                
+        end
+        function obj=plot_low_T_spectral_corr(obj,tau_select,xlimit)
+          tau=obj.tau;
+          legend_str=[];
+          figure()
+          subplot(2,1,1)
+            for i=1:length(tau_select);
+                [dummy,index]=min((tau- tau_select(i)).^2);
+                plot(obj.mirrored_intf_spectral_corr.zeta,obj.mirrored_intf_spectral_corr.spectral_corr(index,:))
+                legend_str=[legend_str; {num2str(tau_select(i)/1E9)}];
+                hold on
+            end
+            legend(legend_str)
+            xlim(xlimit)
+            title('Spectral Correlation time, time in ms')
+            ylabel('Spectral Corr p(\zeta)')
+            xlabel('\zeta [meV]')
+            set(gca,'fontsize',14)
+
+            subplot(2,1,2)
+            for i=1:length(tau_select);
+                [dummy,index]=min((tau- tau_select(i)).^2);
+                plot(obj.mirrored_intf_spectral_corr.zeta,obj.mirrored_intf_spectral_corr.spectral_corr(index,:)/max(obj.mirrored_intf_spectral_corr.spectral_corr(index,:)))
+                legend_str=[legend_str; {num2str(tau_select(i)/1E9)}];
+                hold on
+            end
+            legend(legend_str)
+        xlim(xlimit)
+        ylim([-0.2,1])
+        title('Normalized Spectral Correlation, time in ms ')
+        ylabel('Norm. Spectral Corr p(\zeta)')
+        xlabel('\zeta [meV]')
+                    set(gca,'fontsize',14)
+
+        end
+        
+        
         %% additional analysis functions
         function obj=plot_Fourier_Spectrum(obj)
                 %%Plots the Fourier Interferogram and Spectrum created with the
