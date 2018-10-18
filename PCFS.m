@@ -1,8 +1,9 @@
-%% PCFS.m V5.0 @ HENDRIK UTZAT 2017
-%  18/5/2018
-%%Class definition for analysis of photon resolved PCFS files as generates
-%from the Labview instrument control software by HENDRIK UTZAT --V3.0
+%% PCFS.m V6.0 @ HENDRIK UTZAT 2018
+%  10/18/2018
+% Class definition for analysis of photon resolved PCFS files as generates
+% from the Labview instrument control software by HENDRIK UTZAT --V3.0
 
+% V6: Added a bunch of functions to analyze pulsed HOM-type measurements.
 
 classdef PCFS<dynamicprops
     properties
@@ -356,7 +357,74 @@ classdef PCFS<dynamicprops
             end
         
         
+        end
+        function obj=get_int_corrs_HOM(obj,channels, ps_range, num_points, offset_lag,SyncRate)
+        %obtains the lineaer cross-correlation functions for HOM type
+        %analysis. 
+        
+        if ~isprop(obj,'ps_range')
+            dummy=addprop(obj,'ps_range')
+        end
+        obj.ps_range=ps_range;
+        
+        if ~isprop(obj,'num_points')
+            dummy=addprop(obj,'num_points')
+        end
+        obj.num_points=num_points;
+
+        if ~isprop(obj,'offset_lag')
+            dummy=addprop(obj,'offset_lag')
+        end
+        obj.offset_lag=offset_lag;
+        
+        %get list of files.
+        files=dir;
+        obj.files=files;
+        
+        for i=3:numel(obj.files) %exclusing . and ..
+            [path,f_name,ext]=fileparts(obj.files(i).name);
+            if strcmp(ext,'.photons')== true
+                %% looking at the photon streams.
+                obj.(f_name).photon_g2_fromt3(f_name,'cross_corr',[0,1], ps_range, num_points, offset_lag,SyncRate);
+                
+                if ~isprop(obj,'HOM_interferogram')
+                    dummy=addprop(obj,'HOM_interferogram')
+                end
+                
+                %%create an array containing to be filled up with the
+                %%HOM
+                %%interferogram.
+                N=length(obj.(f_name).cross_corr.corr);
+                
+               
+                
+                if exist('HOM_interferogram')==0
+                    HOM_interferogram=zeros((N),(length(obj.stage_positions)));
+                end
+                
+                
+                k=-1;
+                r=[];
+                while true
+                    k=k+1;
+                    if isstrprop(f_name(end-k),'digit')==true;
+                        r=[f_name(end-k),r];
+                    else
+                        correlation_number=str2num(r);
+                        r=[];
+                        break
+                    end
+                end
+                
+                
+              
+                
+                HOM_interferogram(1:end,(correlation_number+1))=obj.(f_name).cross_corr.corr;
+                obj.HOM_interferogram=struct('HOM_interferogram',HOM_interferogram,'lag',obj.(f_name).cross_corr.lag,'stage_pos',obj.stage_positions);
+                
             end
+        end
+        end
         
         %% wrangle and plot S-PCFS-type data.
         function obj=plot_interferogram(obj,tau_select)
@@ -784,7 +852,83 @@ classdef PCFS<dynamicprops
                 
         end
         
-        % analyze low temperature PCFS data.
+        %% analyze pulsed HOM experiments. 
+        function [obj,optim_params]=fit_HOM_interferogram(obj,params0,params_fixed,ps_range_select, Nstage)
+            
+            all_fit_params=[];
+            
+            [N,M]=size(obj.HOM_interferogram.HOM_interferogram);
+            ps_range=obj.ps_range;
+            
+            tau=obj.HOM_interferogram.lag;
+            
+            if nargin>5
+
+              [tau_select,corr_select]=get_center_quint(tau,obj.HOM_interferogram.HOM_interferogram(:,Nstage),ps_range_select);
+              optim_params=fit_center_quintett(tau_select,corr_select,params0,params_fixed);
+              all_fit_params=optim_params;
+            
+            else
+            
+            
+            for i=1:M;
+                
+                [tau_select,corr_select]=get_center_quint(tau,obj.HOM_interferogram.HOM_interferogram(:,i),ps_range_select);
+                optim_params=fit_center_quintett(tau_select,corr_select,params0,params_fixed);
+                all_fit_params(i,:)=optim_params
+            
+            end
+            
+            if ~isprop(obj,'all_HOM_fit_params')
+                dummy=addprop(obj,'all_HOM_fit_params')
+            end
+            
+            obj.all_HOM_fit_params=all_fit_params;
+            
+            end
+            
+            function [optim_params]=fit_center_quintett(tau,corr,params0,params_fixed)
+                
+                fun = @(params) five_Lorentzian_cost(tau,corr,params,params_fixed);
+                
+                lb=[0,0,0,0,0,1662];
+                ub=[20000,20000,60000,20000,20000,1662];
+                
+                gs = GlobalSearch;
+                problem = createOptimProblem('fmincon','x0',params0,...
+                    'objective',fun,'lb',lb,'ub',ub);
+                
+                optim_params = run(gs,problem);
+                
+                %% try multistart
+                %                 fit_func=@(params) five_Lorentzians(tau,params(1),params(2),params(3),params(4),params(5),params(6),params(7),params(8),params(9),params(10),params(11),params(12),params(13),params(14),params(15));
+                %
+                %                 %opts=optimoptions(@lsqcurvefit,'StepTolerance',1E-10,'FunctionTolerance',1E-10);
+                %
+                %                 problem = createOptimProblem('lsqcurvefit','x0',params0,'objective',fit_func,'lb',lb,'ub',ub,'xdata',double(tau),'ydata',double(corr));
+                %                 ms = MultiStart('PlotFcns',@gsplotbestf);
+                %                 [optim_params,errormulti] = run(ms,problem,n_multistarts)
+
+            end
+            function [tau_select,corr_select]=get_center_quint(tau,corr,ps_range_select)
+                
+                delta_tau=abs(tau(1)-tau(2)); % this gets the tau increment from the correlation function
+                
+                N=length(tau)
+                center_point=floor(N/2)+1
+                N_points=floor(ps_range_select/delta_tau)+1
+                ll=length(corr)
+                
+                % selects +- 6ns from the correlation function which is the center
+                % part.
+                tau_select=tau(center_point-N_points:center_point+N_points);
+                corr_select=corr(center_point-N_points:center_point+N_points);
+                
+            end
+            
+        end
+
+        %% analyze low temperature PCFS data.
         function obj=get_blinking_corrected_PCFS_interferogram(obj)
             
             if ~isprop(obj,'blinking_corrected_PCFS_interferogram')
@@ -947,7 +1091,6 @@ classdef PCFS<dynamicprops
                     set(gca,'fontsize',14)
 
         end
-        
         
         %% additional analysis functions
         function obj=plot_Fourier_Spectrum(obj)

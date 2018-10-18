@@ -1,8 +1,8 @@
 %% MATLAB Implementation for analysis of photon stream data from the Picoqunt GmbH
 % Hydraharp.
 
-%% photons.m V5.0 @ HENDRIK UTZAT, KATIE SHULENBERGER, BORIS SPOKOYNY, TIMOTHY SINCLAIR, 2017
-% 10/29/2017
+%% photons.m V6.0 @ HENDRIK UTZAT, KATIE SHULENBERGER, BORIS SPOKOYNY, TIMOTHY SINCLAIR, 2018
+% 10/18/2018
 
 % This is an object-oritented implementation of a comprehensive
 % analysis library for time-tagged single photon arrival time data as
@@ -1756,7 +1756,7 @@ classdef photons<dynamicprops
             fclose(fid);
              end
         end
-        function obj = photon_corr(obj, file_in_key,file_out_key,channels, time_bounds, lag_precision, lag_offset, use_dll)
+        function obj = photon_corr(obj, file_in_key,file_out_key,channels,time_bounds,lag_precision,lag_offset,use_dll)
             %% Contributed by Boris Spokoyny. Allow to correlate the photon-stream on a log timescale.
             % file_in key: file ID of the photons-file to correlate
             % file_out_key: ID for the struct array added to the photons
@@ -1936,6 +1936,96 @@ classdef photons<dynamicprops
                 end
             end
             
+        end
+        function obj = photon_g2_fromt3(obj,file_in_key,file_out_key,channels, ps_range, num_points, offset_lag,SyncRate)
+        
+            dot_photons_handle = fopen(strcat(obj.pathstr,file_in_key,'.photons'),'r');
+            
+            data=[];
+            
+            while 1
+                batch=fread(dot_photons_handle,[3,obj.buffer_size],'uint64')'; %reading in an array of the binary to process.
+                lbatch=length(batch);
+                data=[data;batch];
+                
+                if lbatch <obj.buffer_size;        % stop reading when reached the end of the file.
+                    break
+                end
+            end
+            
+            fclose(dot_photons_handle);
+            
+            switch obj.header.MeasurementMode
+                case 2 %T2 mode
+                    print('CANNOT COMPILE PULSED G2 FROM T2 DATA')
+                case 3 %T3 mode
+                    data=data'; %% need to transpose for correlation code below. 
+            end
+            
+            
+            
+            %split inot channels
+            ch1 = data(2, data(1, :) == channels(1))/SyncRate*1E12+data(3, data(1, :) == channels(1)); %ch0 syncs
+            ch2 = data(2, data(1, :) == channels(2))/SyncRate*1E12+data(3, data(1, :) == channels(2)); %ch1 syncs
+            
+         %   start_time = time_bounds(1);
+         %   stop_time = time_bounds(2);
+            
+            
+            lag_bin_edges = zeros(1, num_points);
+            dbin = ps_range/num_points;
+            num_negative_bins = floor(num_points/2);
+            for ind = 1:num_points
+                curr_bin = ind-num_negative_bins;
+                lag_bin_edges(ind) = dbin*curr_bin;
+            end
+            
+            % neg_bins = linspace(-ps_range, 0, round(num_points./2));
+            % dbin = abs(neg_bins(2)-neg_bins(1));
+            % pos_bins = (1:(num_points-numel(neg_bins))).*dbin;
+            % lag_bin_edges = [neg_bins pos_bins];
+            
+            tic
+            fprintf('Correlating Data...\n');
+            corr = photons_in_bins(ch1, ch2, lag_bin_edges, offset_lag);
+            fprintf('Done\n')
+            toc
+            
+            if ~isprop(obj,file_out_key)
+                dummy=addprop(obj,file_out_key);
+            end
+            
+            obj.(file_out_key)=struct('num_points',num_points,'lag',lag_bin_edges,'corr',corr);
+            
+            function acf = photons_in_bins(ch1, ch2, lag_bin_edges, offset_lag)
+                %%Counts the number of photons in the photon stream bins
+                %%according to a prescription from Ted Laurence: Fast flexible
+                %%algirthm for calculating photon correlation, Optics Letters,
+                %%31,829,2006
+                num_ch1 = numel(ch1);
+                n_edges = numel(lag_bin_edges);
+                low_inds = ones(1, n_edges-1);
+                low_inds(1) = 2;
+                max_inds = ones(1, n_edges-1);
+                acf = zeros(1, n_edges-1);
+                ch2 = ch2+offset_lag;
+                for phot_ind = 1:num_ch1
+                    bin_edges = ch1(phot_ind)+lag_bin_edges+offset_lag;
+                    
+                    for k = 1:n_edges-1
+                        while low_inds(k) <= numel(ch2) && ch2(low_inds(k)) < bin_edges(k)
+                            low_inds(k) = low_inds(k)+1;
+                        end
+                        
+                        while max_inds(k) <= numel(ch2) && ch2(max_inds(k)) <= bin_edges(k+1)
+                            max_inds(k) = max_inds(k)+1;
+                        end
+                        
+                        low_inds(k+1) = max_inds(k);
+                        acf(k) = acf(k)+(max_inds(k)-low_inds(k));
+                    end
+                end
+            end
         end
         function obj=fit_lifetime_biexponential(obj,lifetime_id,resolution)
                 %% prepares the lifetime (applying offset and cleaning) and then fits the lifetime with a biexponential.
